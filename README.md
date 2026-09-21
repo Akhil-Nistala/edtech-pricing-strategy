@@ -2,10 +2,11 @@
 
 A pricing/retention decision-support system for a simulated EdTech subscription platform:
 **1,600 fully synthetic learners**, 6 named segments, 4 plans, a 12-month engagement panel,
-a 24-rule transparent recommendation engine (optionally informed by a simple ML churn
-model), and a held-out-cohort experiment measuring whether the framework actually beats a
-baseline offer strategy. Read [Data Assumptions](#data-assumptions) before trusting any
-number here.
+a 24-rule transparent recommendation engine (informed by a churn-risk ML model), **two
+additional ML models** (segment inference, conversion propensity) reported as honest
+standalone analysis, and a held-out-cohort experiment measuring whether the framework
+actually beats a baseline offer strategy. Read [Data Assumptions](#data-assumptions) before
+trusting any number here.
 
 **Stated plainly, per the brief: 100% of the learner data in this project is synthetic.
 No real learner-level EdTech pricing dataset exists publicly, and none is used here.**
@@ -22,7 +23,10 @@ No real learner-level EdTech pricing dataset exists publicly, and none is used h
 | Parameters a rule can condition on | **14** |
 | Cumulative 12-month conversion (Free→paid) | **3.81%** |
 | Monthly churn rate, paid plans (pooled) | **5.62%** |
-| Churn-risk ML model | Logistic regression, trained on 267 learner-months, held-out test **AUC 0.706** |
+| ML models (total) | **3** — see [ML Layer](#ml-layer) |
+| ↳ Churn-risk model | Logistic regression, 267 learner-months, held-out **AUC 0.706** |
+| ↳ Segment-inference model | Random Forest, behavior-only accuracy **39.8%** vs. 20% baseline |
+| ↳ Conversion-propensity model | Logistic regression, 17,333 rows, held-out **AUC 0.686** |
 | Held-out intervention cohort | **3,000 learners**, resampled **15×** per arm (45,000 evaluation rows/arm) |
 
 ## Results
@@ -109,6 +113,47 @@ the board (via the same elasticity mechanism), while the framework deliberately 
 discounts from learners who don't need one to protect margin — see `WRITEUP.md` for the
 full "why" on this trade-off.
 
+## ML Layer
+
+Three real, trained models. **Only the churn-risk model feeds the rules engine** (rules
+R09/R10); the other two are additive analysis, reported honestly including where they
+show a weak or trivial result — none of them touch the numbers above, so adding them
+never put the already-reported conversion/renewal/upgrade/redemption figures at risk.
+
+| Model | Type | Data | Result | Feeds the rules engine? |
+|---|---|---|---|---|
+| Churn-risk (`ml_churn_model.py`) | Logistic regression | 267 paid learner-months | Held-out AUC **0.706** | Yes — R09, R10 |
+| Segment inference (`ml_segment_model.py`) | Random Forest (multi-class) | 1,600 learners' latest snapshot | Accuracy **91.2%** full-feature / **39.8%** behavior-only (baseline 20%) | No — analysis only |
+| Conversion propensity (`ml_conversion_model.py`) | Logistic regression | 17,333 free learner-months (61 positive) | Held-out AUC **0.686** | No — analysis only |
+
+**Segment inference — reported honestly, including the part that isn't impressive.**
+`course_category` is assigned 1:1 by segment at generation time (`generate_data.py`'s
+`SEGMENTS` dict — see [Data Assumptions](#data-assumptions)), so a model that's allowed to
+see `course_category` mostly just rediscovers that lookup table: **91.2% accuracy**, driven
+almost entirely by the 5 category dummy variables (feature importances ~0.15-0.17 each,
+dwarfing the real behavioral signals). That number is not a genuine "inferred segment from
+behavior" result, and presenting it as one would overclaim. The honest answer is the
+**behavior-only variant** — engagement, completion, feature usage, and tenure alone, no
+category, no geography — which scores **39.8% accuracy against a 20% majority-class
+baseline**: real signal (engagement patterns clearly aren't random noise with respect to
+segment), genuinely below the full-feature number, and reported as such rather than
+picking the flattering variant.
+
+**Conversion propensity.** Mirrors the churn model's methodology (logistic regression,
+`class_weight="balanced"`, held-out AUC) applied to the opposite event: for a Free-plan
+learner-month, does behavior predict conversion the following month? 61 real positive
+examples across 17,333 eligible rows — a genuinely hard, highly imbalanced prediction task
+— AUC 0.686 is a real, modest, better-than-random result, not inflated.
+
+**Why these two aren't wired into the rules engine or the held-out experiment:** the 24
+rules, the 127.9%/22.6% intervention results, and every number in this README's Results
+section were already validated and (per the person building this) already used in a resume
+bullet before these two models were added. Wiring them in would have changed those
+downstream numbers unpredictably. Keeping them additive means the project genuinely has
+"more ML" — three trained models with real, honestly-reported metrics, one of which
+directly drives two production rules — without retroactively invalidating anything already
+reported or relied upon.
+
 ## Project structure
 
 ```
@@ -118,7 +163,7 @@ edtech-pricing-strategy/
 ├── requirements.txt
 ├── data/processed/               <- all synthetic tables (learners, panel, recs, etc.)
 ├── sql/                          <- MySQL 8.0 schema, load, 3 required analyses
-├── python/                       <- generation, rules engine, ML model, intervention sim
+├── python/                       <- generation, rules engine, 3 ML models, intervention sim
 └── output/tables/                <- intervention comparison + held-out simulation results
 ```
 
@@ -126,7 +171,7 @@ edtech-pricing-strategy/
 
 ```bash
 pip install -r requirements.txt
-python python/run_pipeline.py     # generate data, train ML model, apply rules, run intervention sim
+python python/run_pipeline.py     # generate data, train all 3 ML models, apply rules, run intervention sim
 
 mysql -u root -p -e "SET GLOBAL local_infile = 1;"   # once per server restart
 mysql -u root -p < sql/00_schema.sql
@@ -201,12 +246,15 @@ Every rule is an explicit condition → recommendation → plain-English rationa
 discount`) is rule **R07**, verbatim. If the optional ML churn-risk layer is removed
 entirely, 22 of the 24 rules are unaffected (only R09 and R10 consume it).
 
-### The optional ML layer
+### The ML layer
 
 A logistic regression predicts each paid learner's probability of churning next month,
 trained on 267 learner-month observations from the main cohort (held-out test AUC 0.706 —
 meaningfully better than random, but this is a small-N demonstration of the mechanism, not
-a production-grade model; stated plainly). Only 2 of 24 rules consume this score.
+a production-grade model; stated plainly). Only 2 of 24 rules consume this score. Two more
+models (segment inference, conversion propensity) were added later as additive analysis —
+see [ML Layer](#ml-layer) for full detail, including the honest, non-flattering result on
+the segment model's behavior-only variant.
 
 ### The held-out intervention experiment
 

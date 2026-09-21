@@ -3,7 +3,7 @@ pandas>=2.2
 numpy>=1.26
 scipy>=1.11
 
-# Optional ML churn-risk layer
+# ML layer: churn-risk, segment-inference, and conversion-propensity models
 scikit-learn>=1.4
 
 # Optional: only needed if loading data into MySQL from Python instead of
