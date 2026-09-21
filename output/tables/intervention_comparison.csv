@@ -1,0 +1,5 @@
+metric,n_baseline,n_framework,baseline_rate,framework_rate,absolute_lift_pp,relative_lift_pct,z_statistic,p_value
+conversion_rate,43680,43680,0.52,1.2,0.67,127.9,10.738,6.750770915075802e-27
+renewal_rate,1320,1320,96.97,96.29,-0.68,-0.7,-0.97,0.3317987716695434
+upgrade_rate,1320,1320,5.3,6.21,0.91,17.1,1.003,0.3160443938553743
+discount_redemption_rate,34050,17910,3.44,4.22,0.78,22.6,4.452,8.489098744800844e-06

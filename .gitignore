@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+
+# 100% synthetic, fully regeneratable -- run `python python/run_pipeline.py` to recreate.
+# No raw/ real data here (unlike the sibling projects) since this project has none.
+data/processed/*.csv
+!data/processed/.gitkeep
+
+# Large intermediate simulation-trial rows (45,000 rows each, 15x-resampled Monte Carlo
+# output) -- regeneratable via `python python/simulate_intervention.py`. The actual
+# result (output/tables/intervention_comparison.csv) is kept -- it's the small summary
+# that matters, not the resampled trial-level rows behind it.
+output/tables/heldout_sim_framework.csv
+output/tables/heldout_sim_baseline.csv
